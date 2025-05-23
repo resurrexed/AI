@@ -3,79 +3,64 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 
-
-# Создаем простую нейронную сеть
+# Определяем архитектуру нейронной сети (оставляем без изменений)
 class NNet(nn.Module):
     def __init__(self, in_size, hidden_size, out_size):
         nn.Module.__init__(self)
         self.layers = nn.Sequential(
-            nn.Linear(in_size, hidden_size), # линейные сумматоры
-            nn.Tanh(),                        # функция активации
+            nn.Linear(in_size, hidden_size),
+            nn.Tanh(),
             nn.Linear(hidden_size, out_size),
-            nn.Sigmoid()                      # <-- исправлено: Tanh -> Sigmoid
+            nn.Tanh()
         )
-
+    
     def forward(self, X):
-        pred = self.layers(X)
-        return pred
+        return self.layers(X)
 
-
-# Загружаем данные
+# Загрузка и подготовка данных (адаптируем под новую задачу)
+# Предполагаем, что данные находятся в файле 'customers.csv'
+# Столбцы: возраст, доход, купит(да/нет)
 df = pd.read_csv('data.csv')
+X = torch.Tensor(df.iloc[:, 0:2].values)  # Признаки: возраст и доход (первые 2 столбца)
+y = df.iloc[:, 2].values                  # Метки классов: купит/не купит (3й столбец)
 
-X = torch.Tensor(df.iloc[0:100, 0:2].values)
+y = torch.Tensor(np.where(y == "да", 1, -1).reshape(-1, 1))
 
-y = df.iloc[0:100, 2].values
-y = torch.Tensor(y).view(-1, 1)  # преобразуем в вертикальный тензор
+inputSize = X.shape[1]    # 2 признака: возраст и доход
+hiddenSizes = 3           # Количество нейронов в скрытом слое (оставляем 3)
+outputSize = 1            # Один выходной нейрон для бинарной классификации
 
-
-# Параметры сети
-inputSize = X.shape[1]      # количество признаков
-hiddenSizes = 3             # размер скрытого слоя
-outputSize = 1              # один выходной нейрон для бинарной классификации
-
+# Создаем экземпляр сети
 net = NNet(inputSize, hiddenSizes, outputSize)
 
-
-# Выводим параметры сети
-for name, param in net.named_parameters():
-    print(name, param)
-
-
-# Предсказание до обучения
+# Проверка работы сети до обучения
 with torch.no_grad():
     pred = net.forward(X)
 
-# Приводим предсказания к классам: >= 0.5 → 1, < 0.5 → 0
-pred_class = torch.Tensor((pred >= 0.5).float())
+pred = torch.Tensor(np.where(pred >= 0, 1, -1).reshape(-1, 1))
+err = sum(abs(y - pred)) / 2
+print("Ошибка до обучения:", err.item())
 
-# Считаем ошибку
-err = sum(abs(y - pred_class))
-print('\nОшибка до обучения:', err.item())
+# Настройка обучения
+lossFn = nn.MSELoss()
+optimizer = torch.optim.SGD(net.parameters(), lr=0.01)
 
-
-# Функция потерь: BCELoss — правильнее для бинарной классификации
-lossFn = nn.L1Loss()
-optimizer = torch.optim.Adam(net.parameters(), lr=0.0001)
-
-# Обучение
-epohs = 10000
-for i in range(epohs):
+epochs = 100
+for i in range(epochs):
     pred = net.forward(X)
     loss = lossFn(pred, y)
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
+    
     if i % 10 == 0:
-        print(f'Ошибка на {i+1} итерации: {loss.item():.4f}')
+        print(f'Ошибка на {i+1} итерации: {loss.item()}')
 
-
-# Оценка после обучения
+# Проверка работы сети после обучения
 with torch.no_grad():
     pred = net.forward(X)
 
-pred_class = (pred >= 0.5).float()
-incorrect = torch.sum(y != pred_class).item()
+pred = torch.Tensor(np.where(pred >= 0, 1, -1).reshape(-1, 1))
+err = sum(abs(y - pred)) / 2
+print('\nОшибка после обучения:', err.item())
 
-print('\nОшибка (количество несовпавших ответов): ')
-print(incorrect)
